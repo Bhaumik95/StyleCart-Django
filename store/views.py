@@ -38,7 +38,12 @@ def store(request,category_slug=None):
 
 def product_detail(request,category_slug,product_slug):
     single_product = get_object_or_404(Product, category__slug=category_slug, slug=product_slug)
-    cart = Cart.objects.get(cart_id=_cart_id(request))
+    try:
+        cart = Cart.objects.get(cart_id=_cart_id(request))
+    except Cart.DoesNotExist:
+        cart = Cart.objects.create(cart_id=_cart_id(request))
+        cart.save()
+    
     try:
         in_cart=CartItem.objects.filter(cart=cart,product=single_product).exists()
     except Exception as e:
