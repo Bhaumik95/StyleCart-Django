@@ -148,3 +148,11 @@ EMAIL_USE_TLS = True
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+#paypal details
+PAYPAL_CLIENT_ID = 'AX7AeixW0WeYT2bhEEO6MchuUe4GbvJ4IpOJTRtff4Sau56gRvNmujOIARgfHjH79bhECWAVPAXaDMt3'
+PAYPAL_SECRET = 'EEmoeDYoTks4uT9HkVL9LaNIl0WU8dxsr7539hl11kFn8-igAisy9DHMAylPCQmTaee61OEqhQ2Ik5xe'
+PAYPAL_API_BASE = "https://api-m.sandbox.paypal.com"
+
+PAYPAL_RECEIVER_EMAIL='stylecart.businesssandbox@gmail.com'
+PAYPAL_TEST=True

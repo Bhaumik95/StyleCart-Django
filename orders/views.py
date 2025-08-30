@@ -1,13 +1,15 @@
 from django.shortcuts import render,redirect
 from .forms import OrderForm
-from .models import Order
+from .models import Order,Payment
 from cart.models import CartItem
 import datetime
 
-# Create your views here.
+#paypal 
+import requests
+from django.http import JsonResponse
+from django.conf import settings
 
-def payments(request):
-    return render(request,'orders/payments.html')
+# Create your views here.
 
 def place_order(request,total=0,quantity=0,cart_items=None):
     current_user=request.user
@@ -54,16 +56,96 @@ def place_order(request,total=0,quantity=0,cart_items=None):
             data.save()
 
             order = Order.objects.get(user=current_user,is_ordered=False,order_number=order_number)
-
+            
             context={
                 'order':order,
                 'cart_items':cart_items,
                 'total':total,
                 'tax':tax,
-                'grand_total':grand_total
-            }
+                'grand_total':grand_total,
 
+                }
+            
             return render(request,'orders/payments.html',context)
         
     else:
         return redirect('checkout')        
+
+def get_paypal_access_token(request):
+    url = f"{settings.PAYPAL_API_BASE}/v1/oauth2/token"
+    auth = (settings.PAYPAL_CLIENT_ID,settings.PAYPAL_SECRET)
+    headers = {"Accept": "application/json", "Accept-Language": "en_US"}
+    data = {"grant_type": "client_credentials"}
+
+    response = requests.post(url, headers=headers, auth=auth, data=data)
+    return response.json()['access_token']
+
+def create_paypal_order(request,order_number):
+
+    order=Order.objects.get(user=request.user, is_ordered=False,order_number=order_number)
+
+    access_token = get_paypal_access_token(request)
+
+    url = f"{settings.PAYPAL_API_BASE}/v2/checkout/orders"
+    headers = {"Authorization": f"Bearer {access_token}","Content-type": "application/json"}
+    data = {
+        "intent": "CAPTURE",
+        "purchase_units": [{
+            "amount": {"currency_code": "USD", "value":order.order_total }
+        }],
+        "application_context": {
+            "return_url": request.build_absolute_uri("capture/"),  #
+            "cancel_url": request.build_absolute_uri("payment_failed/")   #
+        }
+    }
+    
+    response = requests.post(url, json=data, headers=headers).json()
+
+    if "links" in response:
+        for link in response["links"]:
+            if link["rel"] == "approve":
+                return redirect(link["href"])
+            
+    return JsonResponse(response, status=400)            
+
+
+def capture_paypal_order(request,order_number):
+    token = request.GET.get("token") #paypal order_id
+
+    access_token = get_paypal_access_token(request)
+
+    url = f"{settings.PAYPAL_API_BASE}/v2/checkout/orders/{token}/capture"
+    headers = {"Authorization": f"Bearer {access_token}", "content-type": "application/json"}  
+
+    response = requests.post(url,headers=headers).json()
+
+    if response["status"] == "COMPLETED":
+        capture = response["purchase_units"][0]["payments"]["captures"][0]
+
+        order=Order.objects.get(user=request.user, is_ordered=False,order_number=order_number)
+
+        payment=Payment(
+            user=request.user,
+            payment_id=capture['id'],
+            payment_method="paypal",
+            amount_paid=order.order_total,
+            status=capture['status']
+        )
+        
+        payment.save()
+
+        order.payment=payment
+        order.is_ordered=True
+        order.status='completed'
+        order.save()
+
+        return redirect('place_order')
+    
+    return redirect('place_order')
+
+def payment_success(request,order_number):
+    return render(request,'orders/payment_success.html')
+
+def payment_failed(request,order_number):
+    return render(request,'orders/payment_failed.html')
+

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{%block content%}
+{% block content %}
 
 
 <section class="section-content padding-y bg">
@@ -107,7 +107,14 @@
 			<p class="text-center mb-3">
 				<img src="{% static './images/misc/payments.png' %}" height="26">
 			</p>
-			<a href="#" class="btn btn-primary btn-block"> Make Payment </a>
+			
+      <div class="text-center">
+
+        <a href="{% url 'create_paypal' order.order_number %}" class="btn btn-primary btn-block">Make Payment</a>
+
+      </div>  
+    
+      
 			
 		</div> <!-- card-body.// -->
 		</div> <!-- card.// -->
@@ -122,6 +129,7 @@
 </div> <!-- container .//  -->
 </section>
 <!-- ========================= SECTION CONTENT END// ========================= -->
+
 </body>
 </html>
 
