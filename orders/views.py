@@ -1,8 +1,11 @@
 from django.shortcuts import render,redirect
 from .forms import OrderForm
-from .models import Order,Payment
+from .models import Order,Payment,OrderProduct
 from cart.models import CartItem
+from store.models import Product
 import datetime
+from django.core.mail import EmailMessage
+from django.template.loader import render_to_string
 
 #paypal 
 import requests
@@ -109,7 +112,7 @@ def create_paypal_order(request,order_number):
     return JsonResponse(response, status=400)            
 
 
-def capture_paypal_order(request,order_number):
+def capture_paypal_order(request,order_number,total=0,quantity=0,cart_items=None):
     token = request.GET.get("token") #paypal order_id
 
     access_token = get_paypal_access_token(request)
@@ -139,7 +142,63 @@ def capture_paypal_order(request,order_number):
         order.status='completed'
         order.save()
 
-        return redirect('place_order')
+        #move cart items to OrderProduct model.
+        cart_items=CartItem.objects.filter(user=request.user)
+        for item in cart_items:
+            order_product=OrderProduct()
+            order_product.order_id=order.id
+            order_product.payment=payment
+            order_product.user_id=request.user.id
+            order_product.product_id=item.product_id
+            order_product.quantity=item.quantity
+            order_product.product_price=item.product.price
+            order_product.ordered=True
+            order_product.save()
+            
+            #add product variations to OrderProduct model.
+            cart_item=CartItem.objects.get(id=item.id)
+            product_variation=cart_item.variations.all()
+            order_product=OrderProduct.objects.get(id=order_product.id)
+            order_product.variations.set(product_variation)
+            order_product.save()
+
+            #reduce ordered product quantity from Stock.
+            product=Product.objects.get(id=item.product_id)
+            product.stock -= item.quantity
+            product.save()
+            
+            ordered_products=OrderProduct.objects.filter(user=request.user,payment=payment)
+             
+            total += (item.product.price * item.quantity)
+            quantity += item.quantity
+
+        tax = (12 * total)/100
+        grand_total = total + tax
+
+        CartItem.objects.filter(user=request.user).delete()  
+
+        #EmailMessage for successful order
+        email_subject = 'Thank you for your order'
+        context_data = {
+            'user': request.user,
+            'order': order
+            }
+            
+        body=render_to_string('orders/order_recieved_email.html',context_data)
+        to_email=request.user.email
+        send_email=EmailMessage(email_subject,body,to=[to_email])
+        send_email.send()    
+
+        data={
+            'order':order,
+            'payment':payment,
+            'ordered_products': ordered_products,
+            'total': total,
+            'tax' : tax,
+            'grand_total': grand_total
+        }
+
+        return render(request,'orders/payment_success.html',data)
     
     return redirect('place_order')
 
